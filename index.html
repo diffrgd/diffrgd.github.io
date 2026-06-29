@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DiffRGD: An Inference-Time Diffusion Guidance Through Riemannian Gradient Descent</title>
+
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        tags: 'none',
+        macros: {
+          bm:        ['\\boldsymbol{#1}', 1],
+          argmin:    '\\operatorname*{argmin}',
+          grad:      '\\operatorname{grad}',
+        }
+      },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+  <style>
+    :root {
+      --accent:      #7c3aed;
+      --accent-dark: #6d28d9;
+      --bg:          #ffffff;
+      --surface:     #f8f7fc;
+      --border:      #e4e0f0;
+      --text:        #1a1a2e;
+      --muted:       #5e5a80;
+      --tag-bg:      #f0eeff;
+      --tag-text:    #6d28d9;
+      --radius:      12px;
+      --shadow:      0 2px 20px rgba(124,58,237,0.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: #ffffff;
+      padding: 64px 24px 52px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: clamp(22px, 3.8vw, 38px);
+      font-weight: 600;
+      line-height: 1.25;
+      max-width: 820px;
+      margin: 0 auto 28px;
+      letter-spacing: -0.02em;
+    }
+
+    .authors {
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 700px;
+      margin: 0 auto 6px;
+      line-height: 1.9;
+    }
+    .authors a { color: var(--accent); text-decoration: none; }
+    .authors a:hover { text-decoration: underline; }
+
+    .affiliations {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    .venue-badge {
+      display: inline-block;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 16px;
+      border-radius: 99px;
+      margin-bottom: 22px;
+      border: 1px solid #d4c8f8;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 20px;
+      border-radius: 99px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.16s ease;
+      border: 1.5px solid transparent;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
+    .btn-outline { background: #fff; color: var(--accent); border-color: var(--accent); }
+    .btn-outline:hover { background: var(--tag-bg); transform: translateY(-1px); }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Layout ── */
+    .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+
+    section { padding: 56px 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h2 {
+      font-size: 23px;
+      font-weight: 700;
+      margin-bottom: 22px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px; height: 22px;
+      background: var(--accent);
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 32px 0 10px;
+      color: var(--accent-dark);
+    }
+
+    h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 22px 0 6px;
+    }
+
+    p { margin-bottom: 14px; }
+    p:last-child { margin-bottom: 0; }
+
+    /* ── Equation blocks ── */
+    .eq-block {
+      padding: 8px 0;
+      margin: 14px 0;
+      overflow-x: auto;
+      font-size: 15px;
+    }
+
+    /* ── Figures ── */
+    .figure {
+      margin: 28px 0;
+      text-align: center;
+    }
+    .figure img {
+      max-width: 100%;
+      border-radius: var(--radius);
+    }
+    .figure figcaption {
+      margin-top: 10px;
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.6;
+      text-align: left;
+    }
+    .figure figcaption strong { color: var(--text); }
+
+    /* side-by-side two figures */
+    .fig-row {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      margin: 28px 0;
+    }
+    .fig-row .figure { margin: 0; flex: 1; }
+
+    /* ── Algorithm ── */
+    .algo {
+      background: #f5f1ff;
+      border: 1px solid #d4c8f8;
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      font-size: 14px;
+      line-height: 2;
+      overflow-x: auto;
+    }
+    .algo-require {
+      color: var(--muted);
+      font-size: 13.5px;
+      margin-bottom: 10px;
+      line-height: 1.7;
+    }
+    .algo-line { white-space: pre; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13.5px; }
+    .algo-comment { color: var(--muted); }
+
+    /* ── Proposition / Theorem boxes ── */
+    .prop-box, .thm-box {
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+    .prop-box {
+      background: #fdf8ff;
+      border: 1px solid #e0d0fa;
+    }
+    .thm-box {
+      background: #f8f4ff;
+      border: 1px solid #c9b8f5;
+    }
+    .prop-box .label, .thm-box .label {
+      font-weight: 700;
+      color: var(--accent-dark);
+      margin-bottom: 8px;
+    }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; margin: 20px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    thead tr { background: var(--surface); }
+    th, td { padding: 9px 12px; text-align: center; border: 1px solid var(--border); }
+    th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.task { text-align: left; font-weight: 600; }
+    td.method { text-align: left; }
+    tr td { background: #ffffff; }
+    tr.ours td { background: #f0eeff !important; font-weight: 600; color: var(--accent-dark); }
+    .best { font-weight: 700; }
+    .second { text-decoration: underline; }
+    .sig::after { content: '*'; font-size: 11px; vertical-align: super; }
+    .table-caption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      line-height: 1.6;
+    }
+    .table-caption strong { color: var(--text); }
+
+    /* ── BibTeX ── */
+    .bibtex {
+      background: #1e1e2e;
+      color: #cdd6ff;
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.9;
+      overflow-x: auto;
+      position: relative;
+    }
+    .bibtex .field { color: #c9a0ff; }
+    .bibtex .val   { color: #a8f0c6; }
+    .copy-btn {
+      position: absolute;
+      top: 12px; right: 14px;
+      background: rgba(255,255,255,0.1);
+      color: #cdd6ff;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 28px 24px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+
+    @media (max-width: 620px) {
+      .hero { padding: 48px 16px 40px; }
+      section { padding: 40px 0; }
+      .fig-row { flex-direction: column; }
+      .algo { padding: 16px; }
+      .bibtex { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ HERO ══════════════════ -->
+<div class="hero">
+  <h1><span>DiffRGD</span>: An Inference-Time Diffusion Guidance<br>Through Riemannian Gradient Descent</h1>
+
+  <div class="authors">
+    <a href="https://jwliao1209.github.io/">Jia-Wei Liao</a><sup>1,4</sup>,&ensp;
+    <a href="https://alexpeng517.github.io/">Li-Xuan Peng</a><sup>2</sup>,&ensp;
+    <a href="https://math.ntnu.edu.tw/~yueh/">Mei-Heng Yueh</a><sup>3</sup>,&ensp;
+    <a href="https://aliensunmin.github.io/">Min Sun</a><sup>2</sup>,&ensp;
+    <a href="https://www.csie.ntu.edu.tw/~ccf/">Cheng-Fu Chou</a><sup>1</sup>,&ensp;
+    <a href="https://homepage.citi.sinica.edu.tw/pages/pullpull/index_en.html">Jun-Cheng Chen</a><sup>4</sup>
+  </div>
+
+  <div class="affiliations">
+    <sup>1</sup>National Taiwan University &nbsp;·&nbsp;
+    <sup>2</sup>National Tsing Hua University &nbsp;·&nbsp;
+    <sup>3</sup>National Taiwan Normal University &nbsp;·&nbsp;
+    <sup>4</sup>Academia Sinica (CITI)
+  </div>
+
+  <div style="font-size:16px; font-weight:600; color:var(--accent); margin-bottom:18px;">ECCV 2026</div>
+
+  <div class="links">
+    <a class="btn btn-outline" href="paper.pdf" target="_blank">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Paper
+    </a>
+    <a class="btn btn-outline" href="https://github.com/jwliao1209/DiffRGD" target="_blank">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      Code
+    </a>
+    <a class="btn btn-outline" href="#bibtex">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      BibTeX
+    </a>
+  </div>
+</div>
+
+<!-- ══════════════════ CONTENT ══════════════════ -->
+<div class="container">
+
+  <!-- Abstract -->
+  <section id="abstract">
+    <h2>Abstract</h2>
+    <p>
+      Recently, diffusion models have been widely adopted in generative modeling and have served as foundational models for many image generation tasks. To control the generation without costly re-training or fine-tuning, many works seek inference-time guidance methods to steer the latent via a differentiable objective at inference time. However, these methods cannot effectively preserve the original Gaussian distribution because they introduce distributional drift, thereby degrading the sample quality. To address this gap, we propose <strong><span>DiffRGD</span></strong>, a distribution-aware guidance framework that explicitly preserves the latent Gaussian structure. DiffRGD formulates each sampling step as a constrained optimization problem on a spherical manifold induced by the latent Gaussian distribution, and solves it efficiently via <strong>Riemannian Gradient Descent (RGD)</strong>. DiffRGD is a plug-and-play method that can be seamlessly integrated into any pre-trained diffusion model. Extensive experiments demonstrate that DiffRGD outperforms previous methods in most image restoration and conditional generation tasks.
+    </p>
+  </section>
+
+  <!-- Overview -->
+  <section id="overview">
+    <h2>Overview</h2>
+    <p>
+      Most existing inference-time guidance methods inject external gradients directly into the sampling process, formulating the per-step update as:
+    </p>
+    <div class="eq-block">
+      $$\hat{\bm{x}}_{t-1} \sim p_\theta(\bm{x}_{t-1} | \bm{x}_{t}), \qquad
+        \bm{x}_{t-1} = \argmin_{\bm{x} \in \mathcal{N}(\hat{\bm{x}}_{t-1})} \mathcal{L}(\hat{\bm{x}}_0(\bm{x}, t-1), \bm{y}).$$
+    </div>
+    <p>
+      Because the neighborhood $\mathcal{N}(\hat{\bm{x}}_{t-1})$ is defined in the ambient Euclidean space, these methods cannot preserve the stepwise Gaussian latent distribution, causing <span>distributional drift</span> that ultimately degrades sample quality. DiffRGD addresses this by performing gradient updates directly on a <span>distribution-induced spherical manifold</span>.
+    </p>
+
+    <figure class="figure">
+      <img src="static/figures/teaser.jpg" alt="DiffRGD teaser" style="max-width: 45%;" />
+      <figcaption>
+        <strong>Figure 1.</strong> Previous works perform guidance without latent-distribution-aware constraints, which can result in off-manifold phenomena that hinder sample quality. DiffRGD proposes a latent-distribution-aware geometry constraint tailored to the Gaussian properties of the diffusion model.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- Method -->
+  <section id="method">
+    <h2>Method</h2>
+    <p>
+      Starting from a noisy latent $\bm{x}_t$ at timestep $t$, DDIM defines the next-step latent $\bm{x}_{t-1}$ as sampling from a Gaussian distribution:
+    </p>
+    <div class="eq-block">
+      $$\bm{x}_{t-1} \sim \mathcal{N}(\bm{\mu}_t, \sigma_t^2 \bm{I}_n),$$
+    </div>
+    <p>where the mean is defined by</p>
+    <div class="eq-block">
+      $$\bm{\mu}_t = \sqrt{\bar{\alpha}_{t-1}}\,\hat{\bm{x}}_0(\bm{x}_t, t) + \sqrt{1 - \bar{\alpha}_{t-1} - \sigma_t^2}\,\bm{\epsilon}_\theta(\bm{x}_t, t),$$
+    </div>
+    <p>and the predicted clean sample is estimated by Tweedie's formula:</p>
+    <div class="eq-block">
+      $$\hat{\bm{x}}_0(\bm{x}_t, t) = \frac{1}{\sqrt{\bar{\alpha}_t}} \left( \bm{x}_t - \sqrt{1 - \bar{\alpha}_t}\,\bm{\epsilon}_\theta(\bm{x}_t, t) \right).$$
+    </div>
+
+    <h3>Polar Decomposition of Isotropic Gaussian</h3>
+
+    <div class="prop-box">
+      <div class="label">Proposition 1 (Polar Decomposition of Isotropic Gaussian)</div>
+      <p>
+        At each diffusion timestep $t$, the latent $\bm{x}_t \sim \mathcal{N}(\bm{\mu}_t, \sigma_t^2 \bm{I}_n)$ follows an isotropic Gaussian distribution centered at $\bm{\mu}_t$. It admits a polar decomposition:
+      </p>
+      <div class="eq-block">
+        $$\bm{x}_t = \bm{\mu}_t + \sigma_t r\, \bm{u},$$
+      </div>
+      <p>
+        where $r \sim \chi(n)$ is a chi-distributed random variable with $n$ degrees of freedom, and $\bm{u} \sim \operatorname{Unif}(\mathbb{S}^{n-1})$ is a unit vector uniformly distributed on the sphere. $r$ and $\bm{u}$ are statistically independent.
+      </p>
+    </div>
+    <p>
+      By fixing the sampled radius $r$, we construct a <span>spherical manifold</span> that captures the Gaussian structure as the feasible set for RGD:
+    </p>
+    <div class="eq-block">
+      $$\mathcal{S}_{t,r} = \left\{ \bm{x} \in \mathbb{R}^n \;\middle|\; \|\bm{x} - \bm{\mu}_t\|_2 = \sigma_t r \right\}.$$
+    </div>
+    <figure class="figure">
+      <img src="static/figures/chi_dist.jpg" alt="Spherical manifold construction" style="max-width:40%;" />
+      <figcaption style="text-align:center;"><strong>Figure 2.</strong> Gaussian distribution-aware spherical manifold construction.</figcaption>
+    </figure>
+
+    <h4>Problem Formulation</h4>
+    <p>We formulate the per-timestep guidance as a constrained optimization problem on $\mathcal{S}_{t,r}$:</p>
+    <div class="eq-block">
+      $$\bm{x}_{t-1} = \argmin_{\bm{x} \in \mathcal{S}_{t,r}} \mathcal{L}(\hat{\bm{x}}_0(\bm{x}, t-1), \bm{y}).$$
+    </div>
+
+    <h3>Riemannian Gradient Descent for Diffusion Guidance</h3>
+
+    <p>To solve the constrained optimization on $\mathcal{S}_{t,r}$, we employ RGD with three geometric operations:</p>
+
+    <div class="fig-row">
+      <div style="flex: 1.5">
+        <h4>Tangent Space</h4>
+        <div class="eq-block">
+          $$\operatorname{T}_{\bm{x}}\mathcal{S}_{t,r} = \left\{ \bm{v} \in \mathbb{R}^n \;\middle|\; (\bm{x} - \bm{\mu}_t)^\top \bm{v} = 0 \right\}.$$
+        </div>
+
+        <h4>Projection Operator</h4>
+        <div class="eq-block">
+          $$\Pi_{\operatorname{T}_{\bm{x}}\mathcal{S}_{t,r}}(\bm{v}) = \left( \bm{I}_n - \frac{(\bm{x} - \bm{\mu}_t)(\bm{x} - \bm{\mu}_t)^\top}{\|\bm{x} - \bm{\mu}_t\|_2^2} \right) \bm{v}.$$
+        </div>
+
+        <h4>Retraction</h4>
+        <div class="eq-block">
+          $$\operatorname{R}_{\bm{x}}(\bm{v}) = \bm{\mu}_t + \sigma_t r \cdot \frac{\bm{x} - \bm{\mu}_t + \bm{v}}{\|\bm{x} - \bm{\mu}_t + \bm{v}\|_2}.$$
+        </div>
+      </div>
+      <div style="flex: 1; display:flex; align-items:center;">
+        <figure class="figure" style="margin:0">
+          <img src="static/figures/rgd.jpg" alt="DiffRGD illustration" />
+          <figcaption><strong>Figure 3.</strong> An illustration of DiffRGD.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <p>The Riemannian gradient and retraction-based update at each inner iteration $k$ are:</p>
+    <div class="eq-block">
+      $$\operatorname{grad}_{\mathcal{S}_{t,r}}\mathcal{L} = \Pi_{\operatorname{T}_{\bm{x}_{t-1}^{(k)}}\mathcal{S}_{t,r}}\!\left(\nabla_{\bm{x}_{t-1}^{(k)}} \mathcal{L}(\hat{\bm{x}}_0(\bm{x}_{t-1}^{(k)}, t-1), \bm{y})\right),$$
+    </div>
+    <div class="eq-block">
+      $$\bm{x}_{t-1}^{(k+1)} = \operatorname{R}_{\bm{x}_{t-1}^{(k)}}\!\left(-\eta_t^{(k)}\operatorname{grad}_{\mathcal{S}_{t,r}}\mathcal{L}\right).$$
+    </div>
+
+    <h3>Algorithm</h3>
+    <div class="algo">
+      <div class="algo-require">
+        <strong>Input:</strong> Reference image $\bm{y} \in \mathbb{R}^n$, diffusion model $\bm{\epsilon}_\theta$, loss $\mathcal{L}$, DDIM schedule $\{\bar{\alpha}_t\}_{t=1}^T$, noise levels $\sigma_t > 0$, guidance strengths $\{\eta_t^{(k)}\}_{t=1}^T$, inner iterations $K \in \mathbb{N}$.
+      </div>
+      <div class="algo-line">1:  $\bm{x}_T \sim \mathcal{N}(\bm{0}, \bm{I}_n)$</div>
+      <div class="algo-line">2:  <b>for</b> $t = T$ to $1$ <b>do</b></div>
+      <div class="algo-line">3:      $r \sim \chi(n)$</div>
+      <div class="algo-line">4:      $\bm{u} \sim \operatorname{Unif}(\mathbb{S}^{n-1})$</div>
+      <div class="algo-line">5:      $\bm{\mu}_t \leftarrow \sqrt{\bar{\alpha}_{t-1}}\,\hat{\bm{x}}_0(\bm{x}_t,t) + \sqrt{1 - \bar{\alpha}_{t-1} - \sigma_t^2}\,\bm{\epsilon}_\theta(\bm{x}_t, t)$</div>
+      <div class="algo-line">6:      $\bm{x}_{t-1}^{(0)} \leftarrow \bm{\mu}_t + \sigma_t r\,\bm{u}$</div>
+      <div class="algo-line">7:      <b>for</b> $k = 0$ to $K-1$ <b>do</b></div>
+      <div class="algo-line">8:          $\bm{g} \leftarrow \nabla_{\bm{x}_{t-1}^{(k)}} \mathcal{L}(\hat{\bm{x}}_0(\bm{x}_{t-1}^{(k)}, t-1), \bm{y})$ <span class="algo-comment">▷ Guidance gradient</span></div>
+      <div class="algo-line">9:          $\operatorname{grad}_{\mathcal{S}_{t,r}}\mathcal{L} \leftarrow \Pi_{\operatorname{T}_{\bm{x}_{t-1}^{(k)}}\mathcal{S}_{t,r}}(\bm{g})$ <span class="algo-comment">▷ Riemannian gradient</span></div>
+      <div class="algo-line">10:         $\bm{x}_{t-1}^{(k+1)} \leftarrow \operatorname{R}_{\bm{x}_{t-1}^{(k)}}(-\eta_t^{(k)}\operatorname{grad}_{\mathcal{S}_{t,r}}\mathcal{L})$ <span class="algo-comment">▷ Retraction</span></div>
+      <div class="algo-line">11:     <b>end for</b></div>
+      <div class="algo-line">12:     $\bm{x}_{t-1} \leftarrow \bm{x}_{t-1}^{(K)}$</div>
+      <div class="algo-line">13: <b>end for</b></div>
+      <div class="algo-line"><b>Return:</b> Guided sample $\bm{x}_0$.</div>
+    </div>
+
+  </section>
+
+  <!-- Experiments -->
+  <section id="experiments">
+    <h2>Experiments</h2>
+
+    <h3>Image Restoration</h3>
+    <p>
+      We evaluate on four inverse problem tasks using 150 images from FFHQ 256×256. Each task is formulated as a noisy linear inverse problem $\bm{y} = \mathcal{A}(\bm{x}) + \bm{n}$, $\bm{n} \sim \mathcal{N}(\bm{0}, 0.05^2\bm{I})$, with guidance objective $\mathcal{L}_\text{inv}(\hat{\bm{x}}_0, \bm{y}) = \|\mathcal{A}(\hat{\bm{x}}_0) - \bm{y}\|_2$. Tasks: (i) <strong>Inpainting</strong> (70% random mask), (ii) <strong>Super-Resolution ×4</strong> (bicubic), (iii) <strong>Gaussian Deblurring</strong> (31×31, $\sigma=3.0$), (iv) <strong>Motion Deblurring</strong> (61×61, intensity 0.5).
+    </p>
+
+    <p class="table-caption">
+      <strong>Table 1.</strong> Quantitative results using DDIM 1,000 sampling steps on 150 samples from the FFHQ 256×256 validation set. Metrics averaged over 100 bootstrap runs. <strong>Bold</strong> = best, <u>underline</u> = second-best, * = statistically significant improvement ($p < 0.05$) over second-best.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th><th>Method</th><th>Venue</th>
+            <th>PSNR ↑</th><th>SSIM ↑</th><th>LPIPS ↓</th><th>FID ↓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="task" rowspan="5">Inpainting</td>
+              <td class="method">DPS</td><td>ICLR 2023</td><td>30.44</td><td>0.863</td><td>0.153</td><td>42.68</td></tr>
+          <tr><td class="method">MPGD</td><td>ICLR 2024</td><td>27.51</td><td>0.724</td><td>0.256</td><td>68.24</td></tr>
+          <tr><td class="method">DSG</td><td>ICML 2024</td><td>31.03</td><td>0.866</td><td>0.144</td><td>36.30</td></tr>
+          <tr><td class="method">ADMMDiff</td><td>CVPR 2025</td><td class="second">32.38</td><td class="second">0.899</td><td class="second">0.119</td><td class="second">29.52</td></tr>
+          <tr class="ours"><td class="method">DiffRGD (Ours)</td><td>ECCV 2026</td><td class="best sig">34.04</td><td class="best sig">0.926</td><td class="best sig">0.096</td><td class="best sig">21.88</td></tr>
+
+          <tr><td class="task" rowspan="5">Super-Res. ×4</td>
+              <td class="method">DPS</td><td>ICLR 2023</td><td>26.03</td><td>0.727</td><td>0.260</td><td>80.05</td></tr>
+          <tr><td class="method">MPGD</td><td>ICLR 2024</td><td>24.40</td><td>0.614</td><td>0.354</td><td>101.50</td></tr>
+          <tr><td class="method">DSG</td><td>ICML 2024</td><td class="second">26.71</td><td class="second">0.737</td><td class="second">0.256</td><td class="second">74.67</td></tr>
+          <tr><td class="method">ADMMDiff</td><td>CVPR 2025</td><td>26.48</td><td>0.712</td><td>0.297</td><td>96.69</td></tr>
+          <tr class="ours"><td class="method">DiffRGD (Ours)</td><td>ECCV 2026</td><td class="best sig">27.77</td><td class="best sig">0.783</td><td class="best sig">0.220</td><td class="best sig">63.94</td></tr>
+
+          <tr><td class="task" rowspan="5">Gaussian Deblur</td>
+              <td class="method">DPS</td><td>ICLR 2023</td><td>25.88</td><td>0.721</td><td>0.237</td><td>69.38</td></tr>
+          <tr><td class="method">MPGD</td><td>ICLR 2024</td><td>24.07</td><td>0.576</td><td>0.328</td><td>95.12</td></tr>
+          <tr><td class="method">DSG</td><td>ICML 2024</td><td class="best">27.45</td><td>0.751</td><td>0.259</td><td class="second">75.85</td></tr>
+          <tr><td class="method">ADMMDiff</td><td>CVPR 2025</td><td>26.57</td><td class="best">0.757</td><td class="second">0.226</td><td>79.30</td></tr>
+          <tr class="ours"><td class="method">DiffRGD (Ours)</td><td>ECCV 2026</td><td class="second">26.80</td><td class="best">0.757</td><td class="best sig">0.218</td><td class="best sig">63.83</td></tr>
+
+          <tr><td class="task" rowspan="5">Motion Deblur</td>
+              <td class="method">DPS</td><td>ICLR 2023</td><td>24.47</td><td>0.685</td><td>0.271</td><td>80.75</td></tr>
+          <tr><td class="method">MPGD</td><td>ICLR 2024</td><td>23.15</td><td>0.569</td><td>0.357</td><td>106.99</td></tr>
+          <tr><td class="method">DSG</td><td>ICML 2024</td><td class="second">26.80</td><td>0.709</td><td>0.290</td><td>87.96</td></tr>
+          <tr><td class="method">ADMMDiff</td><td>CVPR 2025</td><td class="best">27.26</td><td class="best">0.778</td><td class="best">0.222</td><td>72.92</td></tr>
+          <tr class="ours"><td class="method">DiffRGD (Ours)</td><td>ECCV 2026</td><td>25.84</td><td class="second">0.736</td><td class="second">0.250</td><td class="best">72.26</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure class="figure">
+      <img src="static/figures/exp_ffhq.jpg" alt="Qualitative results on FFHQ" />
+      <figcaption>
+        <strong>Figure 4.</strong> Qualitative comparison for image restoration tasks on FFHQ 256×256 validation set. Our proposed method achieves better restoration results with fewer artifacts than other compared methods.
+      </figcaption>
+    </figure>
+
+    <h3>Conditional Generation</h3>
+    <p>
+      We evaluate on three conditional generation tasks from CelebA-HQ 256×256: segmentation map, sketch, and FaceID guidance. Given a conditional image $\bm{y}$, we extract task-specific features via a pre-trained model $\psi_\theta$, and define the guidance loss as:
+    </p>
+    <div class="eq-block">
+      $$\mathcal{L}_\text{cond}(\hat{\bm{x}}_0, \bm{y}) = \|\psi_\theta(\hat{\bm{x}}_0) - \psi_\theta(\bm{y})\|_2.$$
+    </div>
+
+    <p class="table-caption">
+      <strong>Table 2.</strong> Quantitative results using DDIM 100 sampling steps on 150 samples from CelebA-HQ 256×256. Metrics averaged over 100 bootstrap runs. * = statistically significant improvement ($p < 0.05$).
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">Method</th>
+            <th colspan="3">Segmentation Map</th>
+            <th colspan="3">Sketch</th>
+            <th colspan="3">FaceID</th>
+          </tr>
+          <tr>
+            <th>mIoU ↑</th><th>FID ↓</th><th>KID ↓</th>
+            <th>Sketch-$\ell_2$ ↓</th><th>FID ↓</th><th>KID ↓</th>
+            <th>FaceID-$\ell_2$ ↓</th><th>FID ↓</th><th>KID ↓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="method">FreeDoM</td><td>0.622</td><td>156.02</td><td>0.057</td><td>30.85</td><td>101.90</td><td>0.017</td><td>0.557</td><td>127.05</td><td>0.032</td></tr>
+          <tr><td class="method">DSG</td><td>0.750</td><td>117.48</td><td class="second">0.028</td><td class="second">21.36</td><td>107.00</td><td>0.024</td><td class="second">0.340</td><td class="second">95.27</td><td class="second">0.014</td></tr>
+          <tr><td class="method">ADMMDiff</td><td class="second">0.758</td><td class="second">101.86</td><td>0.031</td><td>30.82</td><td class="second">97.52</td><td class="second">0.014</td><td>0.346</td><td>100.81</td><td class="second">0.014</td></tr>
+          <tr class="ours"><td class="method">DiffRGD (Ours)</td><td class="best sig">0.804</td><td class="best sig">96.10</td><td class="best">0.026</td><td class="best sig">19.48</td><td class="best sig">87.82</td><td class="best">0.012</td><td class="best sig">0.303</td><td class="best">93.80</td><td class="best">0.011</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure class="figure">
+      <img src="static/figures/exp_condition.jpg" alt="Qualitative results on conditional generation" />
+      <figcaption>
+        <strong>Figure 5.</strong> Qualitative results for conditional generation tasks on CelebA-HQ 256×256. (a) segmentation maps (b) sketches (c) FaceID. Our method generates results that better align with the given conditions than other state-of-the-art methods.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- BibTeX -->
+  <section id="bibtex">
+    <h2>Citation</h2>
+    <div class="bibtex" id="bibtex-block">
+      <button class="copy-btn" onclick="copyBibtex()">Copy</button>
+<pre>@inproceedings{liao2026diffrgd,
+  <span class="field">title</span>     = {DiffRGD: An Inference-Time Diffusion Guidance
+               Through Riemannian Gradient Descent},
+  <span class="field">author</span>    = {Liao, Jia-Wei and Peng, Li-Xuan and Yueh, Mei-Heng
+               and Sun, Min and Chou, Cheng-Fu and Chen, Jun-Cheng},
+  <span class="field">booktitle</span> = {European Conference on Computer Vision (ECCV)},
+  <span class="field">year</span>      = {<span class="val">2026</span>},
+}</pre>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <p>
+    <span>DiffRGD</span> &nbsp;·&nbsp; ECCV 2026 &nbsp;·&nbsp;
+    <a href="mailto:d11922016@csie.ntu.edu.tw">d11922016@csie.ntu.edu.tw</a>
+  </p>
+  <p style="margin-top:6px;font-size:12px;color:#b0abc8;">
+    Supported by National Science and Technology Council, Taiwan (R.O.C.) and Academia Sinica.
+  </p>
+</footer>
+
+<script>
+  function copyBibtex() {
+    const pre = document.querySelector('#bibtex-block pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+</script>
+</body>
+</html>
